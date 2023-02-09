@@ -10,9 +10,10 @@
 
 import machine, network, secrets
 import utime,time,math
-import binascii
+import ubinascii
 import ntptime
 import umail
+import uping
 from machine import Pin, I2C
 from umqtt.simple import MQTTClient
 from machine import WDT
@@ -29,7 +30,8 @@ wlan.active(True)
 #print (wlan.scan())                                     
 wlan.connect(secrets.SSID, secrets.PASSWORD)
 
-#pet the dog
+#pet the dog\
+
 wdt.feed()
 
 # Wait for connect or fail
@@ -51,12 +53,17 @@ else:
   print('connected')
   status = wlan.ifconfig()
   print( 'ip = ' + status[0] )
-  
+
+mac = ubinascii.hexlify(network.WLAN().config('mac'), ':').decode()
+mac = mac[-5:]
+mac = mac.replace(":","_")
+print(mac)
+
 def sub_cb(topic, msg):
     print(msg)
 
 def connect_and_subscribe():
-  client = MQTTClient(secrets.CLIENT,secrets.MQTTHOST,user=secrets.MQTTUSER, password=secrets.MQTTPASS, keepalive=300, ssl=False, ssl_params={})
+  client = MQTTClient(secrets.CLIENT + "_" + mac,secrets.MQTTHOST,user=secrets.MQTTUSER, password=secrets.MQTTPASS, keepalive=300, ssl=False, ssl_params={})
   client.set_callback(sub_cb)
   client.connect()
   return client
@@ -88,8 +95,8 @@ rtc.datetime(tm)
 
 #let's publish our HA autodiscovery stuff
 #first the Config topic
-config = b'homeassistant/sensor/' + secrets.PROBENAME + secrets.STATE_TOPIC + b'/config'
-data = b'{"uniq_id":"' + secrets.STATE_TOPIC + b'","name":"' + secrets.STATE_TOPIC + b'","state_class":"measurement","unit_of_measurement":"%", "state_topic":"homeassistant/sensor/' + secrets.STATE_TOPIC + b'/state", "value_template":"{{ value_json.reading}}" }'
+config = b'homeassistant/sensor/' + secrets.PROBENAME + secrets.STATE_TOPIC + "_" + mac + b'/config'
+data = b'{"uniq_id":"' + secrets.STATE_TOPIC + "_" + mac + b'","name":"' + secrets.STATE_TOPIC + "_" + mac + b'","state_class":"measurement","unit_of_measurement":"%", "state_topic":"homeassistant/sensor/' + secrets.STATE_TOPIC + "_" + mac + b'/state", "value_template":"{{ value_json.reading}}" }'
 client.publish(config,data,1) #publish and set it to retain
 time.sleep_ms(250)
 wdt.feed()
@@ -135,6 +142,9 @@ while True:
     #so 0 = 24cm distance
     distance = ((totalDistance - minReading - maxReading) / (numReadings - 2)) - secrets.MIN_DISTANCE_TO_TOP_OF_LIQUID
     
+    if distance < 0:
+        distance = 0
+    
     #A full tank is a little over 4ft or 121.92 cm if the sensor is at top of the tank (not the manhole)
     # lets say it is 5 ft above the bottom = 152.4 cm
     tankHeight = secrets.TANK_HEIGHT
@@ -151,7 +161,7 @@ while True:
     year, month, day, hour, mins, secs, weekday, yearday = time.localtime()
 
     #publish our reading to MQTT
-    state = b'homeassistant/sensor/' + secrets.STATE_TOPIC + b'/state'
+    state = b'homeassistant/sensor/' + secrets.STATE_TOPIC + "_" + mac + b'/state'
     #print our timestamped msg
     print("{:02d}-{:02d}-{}T{:02d}:{:02d}:{:02d}".format(year, month, day, hour, mins, secs), state +" = "+ str(distance) + "cm - " + percentFull + "%")
     
@@ -174,9 +184,9 @@ while True:
             smtp.to(secrets.EMAIL_TO)
             smtp.write("From: " + secrets.EMAIL_FROM + "\n")
             smtp.write("To: "+ secrets.EMAIL_TO + "\n")
-            smtp.write("Subject: " + secrets.CLIENT + " %s Percent Full \n\n" % percentFull)
+            smtp.write("Subject: " + secrets.CLIENT + "_" + mac + " %s Percent Full \n\n" % percentFull)
             smtp.write("Waking up from my slumber now\n")
-            smtp.write(secrets.CLIENT + " is %s percent Full\n" % percentFull)
+            smtp.write(secrets.CLIENT + "_" + mac + " is %s percent Full\n" % percentFull)
             smtp.write("See you in a while\n")
             smtp.write("...\n")
             smtp.send()
@@ -195,8 +205,8 @@ while True:
             smtp.to(secrets.EMAIL_SMS_TO)
             smtp.write("From: " + secrets.EMAIL_FROM + "\n")
             smtp.write("To: "+ secrets.EMAIL_TO + "\n")
-            smtp.write("Subject: " + secrets.CLIENT + " %s Percent Full \n\n" % percentFull)
-            smtp.write(secrets.CLIENT + " is %s percent Full\n" % percentFull)
+            smtp.write("Subject: " + secrets.CLIENT + "_" + mac + " %s Percent Full \n\n" % percentFull)
+            smtp.write(secrets.CLIENT + "_" + mac + " is %s percent Full\n" % percentFull)
             smtp.write("...\n")
             smtp.send()
             smtp.quit()
@@ -206,6 +216,10 @@ while True:
     while counter > 0:
         #pet the dog
         wdt.feed()
+        #send a single ping to keep the connection active or it loses connection... not sure why
+        #uping.ping(host, count=4, timeout=5000, interval=10, quiet=False, size=64)
+        uping.ping(secrets.MQTTHOST, 1, 2000, 10, True, 64)
+        
         time.sleep(1)
         counter -= 1
     
