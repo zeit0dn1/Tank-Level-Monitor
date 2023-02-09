@@ -3,9 +3,8 @@
 #uses RPI Pico W, and ultrasonic distance sensor (JSN-SR04T)
 
 #todo:
-# put on github
-# make README
-#upload images and schmatic
+# work on README
+# upload images and schmatic
 
 #NB: config secrets.py based on secrets_example.py
 
